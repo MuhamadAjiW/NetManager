@@ -1,0 +1,154 @@
+#!/bin/bash
+# command library for cisco, do not use outside of wazuh_netmgr
+
+lib_execute_ssh(){
+	[ $VERBOSE -eq 1 ] && echo "Executing command on node $ip..."
+	local method=$1
+	local ip=$2
+	local username=$3
+	local password=$4
+	local commands=$5
+	local retcode=0
+	
+	case "$method" in
+		password)
+			if [ $VERBOSE -eq 1 ]; then
+				sshpass -p "$password" ssh -o StrictHostKeyChecking=no $username@$ip <<EOF
+$commands
+EOF
+			else
+				sshpass -p "$password" ssh -o StrictHostKeyChecking=no $username@$ip <<EOF > /dev/null 2>&1
+$commands
+EOF
+			fi
+			retcode=$?
+			;;
+        pubkey)
+			if [ $VERBOSE -eq 1 ]; then
+				ssh -i "$password" -o StrictHostKeyChecking=no $username@$ip <<EOF
+$commands
+EOF
+			else
+				ssh -i "$password" -o StrictHostKeyChecking=no $username@$ip <<EOF > /dev/null 2>&1
+$commands
+EOF
+			fi
+			retcode=$?
+            ;;
+		*)
+			echo "Error: Method $method is invalid or not available."
+			return 1
+			;;
+	esac
+    
+	[ $VERBOSE -eq 1 ] && [ $retcode -eq 0 ] && echo "Command execution success"
+	return $retcode
+}
+
+lib_save_config(){
+	[ $VERBOSE -eq 1 ] && echo "Saving config on node $ip..."
+	local method=$1
+	local ip=$2
+	local path=$3
+	local username=$4
+	local password=$5
+    local enable_scp_commands="
+conf t
+ip scp server enable
+exit
+"
+    local save_config_commands="
+copy running-config flash:backup-config
+backup-config
+Y
+"
+	local disable_scp_commands="
+conf t
+no ip scp server enable
+exit
+"
+    local date=$(date '+%Y-%m-%d_%H-%M-%S')
+	local retcode=0
+
+    [ $VERBOSE -eq 1 ] && echo "Creating folder in given path..."
+    local dir=$(dirname "$path")
+    mkdir -p "$dir"
+
+    lib_execute_ssh "$method" "$ip" "$username" "$password" "$enable_scp_commands"
+    [ $? -ne 0 ] && return $?
+
+    lib_execute_ssh "$method" "$ip" "$username" "$password" "$save_config_commands"
+    [ $? -ne 0 ] && return $?
+
+	case "$method" in
+		password)
+            sshpass -p "$password" scp -o StrictHostKeyChecking=no "$username@$ip:running-config" "$path"
+			retcode=$?
+			;;
+        pubkey)
+            scp -i "$password" -o StrictHostKeyChecking=no "$username@$ip:running-config" "$path"
+            ;;
+		*)
+			echo "Error: Method $method is invalid or not available."
+			return 1
+			;;
+    esac
+ 
+    lib_execute_ssh "$method" "$ip" "$username" "$password" "$disable_scp_commands"
+    [ $? -ne 0 ] && return $?	
+    
+	[ $VERBOSE -eq 1 ] && [ $retcode -eq 0 ] && echo "Command execution success"
+	return $retcode
+}
+
+lib_restore_config(){
+	[ $VERBOSE -eq 1 ] && echo "Restoring on node $ip..."
+	local method=$1
+	local ip=$2
+	local path=$3
+	local username=$4
+	local password=$5
+    local enable_scp_commands="
+conf t
+ip scp server enable
+exit
+"
+	local disable_scp_commands="
+conf t
+no ip scp server enable
+exit
+"
+	local load_config_commands="
+configure replace flash:backup-config
+Y
+wr
+"
+	local retcode=0
+
+    lib_execute_ssh "$method" "$ip" "$username" "$password" "$enable_scp_commands"
+    [ $? -ne 0 ] && return $?
+
+	case "$method" in
+		password)
+            sshpass -p "$password" scp -o StrictHostKeyChecking=no "$path" "$username@$ip:flash:backup-config"
+            [ $? -ne 0 ] && return $?
+            ;;
+        pubkey)
+            scp -i "$password" -o StrictHostKeyChecking=no "$path" "$username@$ip:flash:backup-config"
+            ;;
+		*)
+			echo "Error: Method $method is invalid or not available."
+			return 1
+			;;
+    esac
+    
+    lib_execute_ssh "$method" "$ip" "$username" "$password" "$load_config_commands" 
+    [ $? -ne 0 ] && return $?	
+ 
+    lib_execute_ssh "$method" "$ip" "$username" "$password" "$disable_scp_commands"
+    [ $? -ne 0 ] && return $?	
+
+	[ $VERBOSE -eq 1 ] && [ $retcode -eq 0 ] && echo "Command execution success"
+	return $retcode
+}
+

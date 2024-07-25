@@ -1,0 +1,534 @@
+#!/bin/bash
+
+# Must be run as root
+if [[ $EUID -ne 0 ]]; then
+    echo "This script must be run as root"
+    exit 1
+fi
+
+# Global Variables
+VERBOSE=1
+
+# Internal functions
+validate_ip() {
+    [ $VERBOSE -eq 1 ] && echo "Validating ip..."
+
+    local ip=$1
+    if [[ $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        IFS='.' read -r -a octets <<< "$ip"
+        for octet in "${octets[@]}"; do
+            if ! [[ "$octet" -ge 0 && "$octet" -le 255 ]]; then
+                return 1  # Invalid IP range
+            fi
+        done
+        return 0  # Valid IP address
+    else
+        return 1  # Invalid IP format
+    fi
+}
+
+netmgr_exec_node(){
+    [ $VERBOSE -eq 1 ] && echo "Executing commands to node with ip=$2..."
+    local path=$1
+    local ip=$2
+    local name=$3
+    local library=$4
+    local method=$5
+    local username=$6
+    local password=$7
+    local commands=$8
+    local fullpath=""
+    local libpath=""
+
+    if [ -z "$ip" ]; then
+        echo "Error: ip address is required"
+        return 1
+    elif ! validate_ip "$ip"; then
+        echo "Error: ip address $ip is invalid"
+        return 1
+    elif [ "$method" != "none" ]; then
+        [ $VERBOSE -eq 1 ] && echo "Loading node library..."
+        libpath="$NETMGR_LIB_PATH/$library"
+
+        if [ ! -f "$libpath" ]; then
+            echo "Error: Library $libpath does not exist"
+            return 1
+        fi    
+
+        (
+            source "$libpath"
+
+            [ $VERBOSE -eq 1 ] && echo "Gaining access to network appliance..."
+            lib_execute_ssh "$method" "$ip" "$username" "$password" "$commands"
+        )
+        [ $? -ne 0 ] && return $?
+        return 0
+    fi
+
+    return 0
+}
+
+netmgr_exec_file(){
+    [ $VERBOSE -eq 1 ] && echo "Executing commands to node from file=$1..."
+    local file="$1"
+    local commands="$2"
+    local total=0
+    local success=0
+
+    if [ ! -f "$file" ]; then
+        echo "Error: File $file not found"
+        exit 1
+    fi
+
+    while IFS=';' read -r path ip name library method username password; do
+        if [[ -z "$path" || "$path" == "#"* ]]; then
+            continue
+        fi
+        netmgr_exec_node "$path" "$ip" "$name" "$library" "$method" "$username" "$password" "$commands"
+        [ $? -eq 0 ] && ((success++))
+        ((total++))
+
+    done < "$file"
+
+    echo "Command has been executed on $success/$total Nodes from $file."
+
+    return 0
+}
+
+netmgr_save_node(){
+    [ $VERBOSE -eq 1 ] && echo "Saving configurations of node with ip=$2..."
+    local path=$1
+    local ip=$2
+    local name=$3
+    local library=$4
+    local method=$5
+    local username=$6
+    local password=$7
+    local fullpath=""
+    local libpath=""
+
+    if [ -z "$ip" ]; then
+        echo "Error: ip address is required"
+        return 1
+    elif ! validate_ip "$ip"; then
+        echo "Error: ip address $ip is invalid"
+        return 1
+    elif [ "$method" != "none" ]; then
+        [ $VERBOSE -eq 1 ] && echo "Loading node library..."
+        libpath="$NETMGR_LIB_PATH/$library"
+
+        if [ ! -f "$libpath" ]; then
+            echo "Error: Library $libpath does not exist"
+            return 1
+        fi    
+
+        (
+            source "$libpath"
+
+            [ $VERBOSE -eq 1 ] && echo "Gaining access to network appliance..."
+            lib_save_config "$method" "$ip" "$path" "$username" "$password"
+        )
+        [ $? -ne 0 ] && return $?
+        return 0
+    fi
+
+    return 0
+}
+
+netmgr_save_file(){
+    [ $VERBOSE -eq 1 ] && echo "Saving configurations of node from file=$1..."
+    local file="$1"
+    local commands="$2"
+    local total=0
+    local success=0
+    local date=$(date '+%Y-%m-%d_%H-%M-%S')
+
+    if [ ! -f "$file" ]; then
+        echo "Error: File $file not found"
+        exit 1
+    fi
+
+    while IFS=';' read -r path ip name library method username password; do
+        if [[ -z "$path" || "$path" == "#"* ]]; then
+            continue
+        fi
+        netmgr_save_node "$NETMGR_SAVE_PATH/$date/$path" "$ip" "$name" "$library" "$method" "$username" "$password"
+        [ $? -eq 0 ] && ((success++))
+        ((total++))
+
+    done < "$file"
+
+    echo "Has saved $success/$total Nodes from $file."
+
+    return 0
+}
+
+netmgr_restore_node(){
+    [ $VERBOSE -eq 1 ] && echo "Restoring configurations to node with ip=$2..."
+    local path=$1
+    local ip=$2
+    local name=$3
+    local library=$4
+    local method=$5
+    local username=$6
+    local password=$7
+    local fullpath=""
+    local libpath=""
+
+    if [ -z "$ip" ]; then
+        echo "Error: ip address is required"
+        return 1
+    elif ! validate_ip "$ip"; then
+        echo "Error: ip address $ip is invalid"
+        return 1
+    elif [ "$method" != "none" ]; then
+        [ $VERBOSE -eq 1 ] && echo "Loading node library..."
+        libpath="$NETMGR_LIB_PATH/$library"
+
+        if [ ! -f "$libpath" ]; then
+            echo "Error: Library $libpath does not exist"
+            return 1
+        fi    
+
+        (
+            source "$libpath"
+
+            [ $VERBOSE -eq 1 ] && echo "Gaining access to network appliance..."
+            lib_restore_config "$method" "$ip" "$path" "$username" "$password"
+        )
+        [ $? -ne 0 ] && return $?
+        return 0
+    fi
+
+    return 0
+}
+
+netmgr_restore_file(){
+    [ $VERBOSE -eq 1 ] && echo "Restoring configurations of node from file=$1..."
+    local file="$1"
+    local folder_path="$2"
+    local total=0
+    local success=0
+
+    if [ ! -f "$file" ]; then
+        echo "Error: File $file not found"
+        exit 1
+    fi
+
+    while IFS=';' read -r path ip name library method username password; do
+        if [[ -z "$path" || "$path" == "#"* ]]; then
+            continue
+        fi
+        netmgr_restore_node "$folder_path/$path" "$ip" "$name" "$library" "$method" "$username" "$password"
+        [ $? -eq 0 ] && ((success++))
+        ((total++))
+
+    done < "$file"
+
+    echo "Has restored $success/$total Nodes from $file."
+
+    return 0
+}
+
+# Commands
+func_show_help(){
+        echo "
+Usage: $0 [-s] [-c config]
+Commands:
+    exec            Execs commands remotely on network appliances
+    save            Save network appliances configuration on config path
+    restore         Restores network appliances configuration from previously saved config
+
+Options:
+    -h              Shows this help message
+    -c <config>     Specifies configuration file
+    -s              Enable silent mode
+"
+}
+
+func_exec(){
+    [ $VERBOSE -eq 1 ] && echo "Executing command on nodes..."
+
+    # Set opt index
+    OPTIND=2
+
+    local ip=""
+    local file=""
+    local library=""
+    local method=""
+    local username=""
+    local password=""
+    local commands=""
+
+    while getopts "h?x:i:f:l:m:u:p:" opt; do
+        case "$opt" in
+        h|\?)
+            echo "
+Usage: netmgr exec [-i ip address] or [-f file path] [-x commands]
+
+Required:
+    -x <commands>          : Command to execute on nodes
+    -i <ip address>     : The ip address of the added node
+    or
+    -f <file path>      : The path for bulk adding nodes
+
+Example file format at ./data/wazuh_netmgr.data.example
+
+Optional:
+    -l <library>        : Library used for configuring the network appliance (default is none)
+    -m <method>         : Authentication method
+    -u <username>       : Username for password authentication
+    -p <password>       : Password for password authentication
+
+Authentication Methods:
+    none                : Does not configure the network appliance (default)
+    password            : Uses username and password
+" && exit 0;;
+        i)    ip=$OPTARG          ;;
+        f)    file=$OPTARG        ;;
+        l)    library=$OPTARG     ;;
+        m)    method=$OPTARG      ;;
+        u)    username=$OPTARG    ;;
+        p)    password=$OPTARG    ;;
+        x)    commands=$OPTARG    ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    if [ -z "$commands" ]; then
+        echo "Error: Missing required arguments. Use -h for help."
+        exit 1 
+    fi
+
+    if [ ! -z "$file" ]; then
+        if [ ! -z "$ip" ] || [ ! -z "$library" ] || [ ! -z "$method" ] || [ ! -z "$username" ] || [ ! -z "$password" ] ; then
+            echo "Error: -f flag cannot be used at the same time with singular entry flags"
+            exit 1
+        fi
+        netmgr_exec_file "$file" "$commands"
+        [ $? -ne 0 ] && exit $?
+
+    elif [ ! -z "$ip" ]; then
+        if [ ! -z "$library" ]; then
+            if [ "$method" == "password" ]; then
+                if [ -z "$username" ] || [ -z "$password" ]; then
+                    echo "Error: -u username and -p password are necessary with -m method of password"
+                    exit 1
+                fi
+            fi
+        else 
+            library="none"
+            username="none"
+            password="none"
+        fi
+        netmgr_exec_node "$path" "$ip" "$name" "$library" "$method" "$username" "$password" "$commands"
+        [ $? -ne 0 ] && exit $?
+
+    else
+        echo "Error: Missing required arguments. Use -h for help."
+        exit 1
+    fi
+
+    echo "Execution complete."
+}
+
+func_save(){
+    [ $VERBOSE -eq 1 ] && echo "Saving node configurations..."
+
+    # Set opt index
+    OPTIND=2
+
+    local path=""
+    local ip=""
+    local file=""
+    local library=""
+    local method=""
+    local username=""
+    local password=""
+
+    while getopts "h?o:i:f:l:m:u:p:" opt; do
+        case "$opt" in
+        h|\?)
+            echo "
+Usage: netmgr save [-i ip address] [-o output file] or [-f file path]
+
+Required:
+    -i <ip address>     : The ip address of the added node
+    -o <output file>    : Path for the saved config file
+    or
+    -f <file path>      : The path for bulk adding nodes
+
+Example file format at ./data/wazuh_netmgr.data.example
+
+Optional:
+    -l <library>        : Library used for configuring the network appliance (default is none)
+    -m <method>         : Authentication method
+    -u <username>       : Username for password authentication
+    -p <password>       : Password for password authentication
+
+Authentication Methods:
+    none                : Does not configure the network appliance (default)
+    password            : Uses username and password
+" && exit 0;;
+        i)    ip=$OPTARG          ;;
+        o)    path=$OPTARG        ;;
+        f)    file=$OPTARG        ;;
+        l)    library=$OPTARG     ;;
+        m)    method=$OPTARG      ;;
+        u)    username=$OPTARG    ;;
+        p)    password=$OPTARG    ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    if [ ! -z "$file" ]; then
+        if [ ! -z "$ip" ] || [ ! -z "$path" ] || [ ! -z "$library" ] || [ ! -z "$method" ] || [ ! -z "$username" ] || [ ! -z "$password" ] ; then
+            echo "Error: -f flag cannot be used at the same time with singular entry flags"
+            exit 1
+        fi
+        netmgr_save_file "$file"
+        [ $? -ne 0 ] && exit $?
+
+    elif [ ! -z "$ip" ]; then
+        if [ ! -z "$library" ]; then
+            if [ "$method" == "password" ]; then
+                if [ -z "$username" ] || [ -z "$password" ]; then
+                    echo "Error: -u username and -p password are necessary with -m method of password"
+                    exit 1
+                fi
+            fi
+        else 
+            library="none"
+            username="none"
+            password="none"
+        fi
+        local date=$(date '+%Y-%m-%d_%H-%M-%S')
+        netmgr_save_node "$NETMGR_SAVE_PATH/$date/$path" "$ip" "$name" "$library" "$method" "$username" "$password" "$commands"
+        [ $? -ne 0 ] && exit $?
+
+    else
+        echo "Error: Missing required arguments. Use -h for help."
+        exit 1
+    fi
+
+    echo "Saving complete."
+}
+
+func_restore(){
+    [ $VERBOSE -eq 1 ] && echo "Restoring node configurations..."
+
+    # Set opt index
+    OPTIND=2
+
+    local path=""
+    local ip=""
+    local file=""
+    local library=""
+    local method=""
+    local username=""
+    local password=""
+
+    while getopts "h?c:i:f:l:m:u:p:" opt; do
+        case "$opt" in
+        h|\?)
+            echo "
+Usage: netmgr restore [-i ip address] [-c configuration file] or [-f file path] [-c configuration folder]
+
+Required:
+    -i <ip address>     : The ip address of the added node
+    -c <config file>    : Path for the saved config file
+    or
+    -f <file path>      : The path for bulk adding nodes
+    -c <config folder>  : Path for the root config folder
+
+Example file format at ./data/wazuh_netmgr.data.example
+
+Optional:
+    -l <library>        : Library used for configuring the network appliance (default is none)
+    -m <method>         : Authentication method
+    -u <username>       : Username for password authentication
+    -p <password>       : Password for password authentication
+
+Authentication Methods:
+    none                : Does not configure the network appliance (default)
+    password            : Uses username and password
+" && exit 0;;
+        i)    ip=$OPTARG          ;;
+        c)    path=$OPTARG        ;;
+        f)    file=$OPTARG        ;;
+        l)    library=$OPTARG     ;;
+        m)    method=$OPTARG      ;;
+        u)    username=$OPTARG    ;;
+        p)    password=$OPTARG    ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    if [ ! -z "$file" ] && [ ! -z "$path" ]; then
+        if [ ! -z "$ip" ] || [ ! -z "$library" ] || [ ! -z "$method" ] || [ ! -z "$username" ] || [ ! -z "$password" ] ; then
+            echo "Error: -f flag cannot be used at the same time with singular entry flags"
+            exit 1
+        fi
+        netmgr_restore_file "$file" "$path"
+        [ $? -ne 0 ] && exit $?
+
+    elif [ ! -z "$ip" ]; then
+        if [ ! -z "$library" ]; then
+            if [ "$method" == "password" ]; then
+                if [ -z "$username" ] || [ -z "$password" ]; then
+                    echo "Error: -u username and -p password are necessary with -m method of password"
+                    exit 1
+                fi
+            fi
+        else 
+            library="none"
+            username="none"
+            password="none"
+        fi
+        netmgr_restore_node "$path" "$ip" "$name" "$library" "$method" "$username" "$password" "$commands"
+        [ $? -ne 0 ] && exit $?
+
+    else
+        echo "Error: Missing required arguments. Use -h for help."
+        exit 1
+    fi
+
+    echo "Restoration complete."
+}
+
+main(){
+    local config="./etc/netmgr.conf"
+    local action=""
+
+    # Set opt index
+    OPTIND=1
+
+    while getopts "h?sc:" opt; do
+        case "$opt" in
+        h|\?)   func_show_help && exit 0    ;;
+        s)      VERBOSE=0                   ;;
+        c)      config=$OPTARG              ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    # Loads config
+    if [ -f "$config" ]; then
+        source "$config"
+    else
+        echo "Error: Configuration file $config not found or is not a regular file."
+        exit 1
+    fi
+
+    action="$1"
+
+    case "$action" in
+    "exec")     func_exec "$@"      ;;
+    "save")     func_save "$@"      ;;
+    "restore")  func_restore "$@"   ;;
+    *)          func_show_help      ;;
+    esac
+}
+
+main "$@"
+
