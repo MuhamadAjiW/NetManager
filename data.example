@@ -1,0 +1,2 @@
+#path;ip;name;library;method;username;password
+node;192.168.1.1;test-node;Cisco-vIOS;pubkey;cisco;~/.ssh/id_rsa
