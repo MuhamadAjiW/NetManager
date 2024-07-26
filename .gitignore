@@ -1,3 +1,4 @@
 *.ignore
-!*.gitkeep
 var/*
+extensions/*
+!*.gitkeep
