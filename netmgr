@@ -80,7 +80,7 @@ netmgr_exec_file(){
         exit 1
     fi
 
-    while IFS=';' read -r path ip name library method username password; do
+    while ifs=',' read -r path ip name library method username password; do
         if [[ -z "$path" || "$path" == "#"* ]]; then
             continue
         fi
@@ -148,7 +148,7 @@ netmgr_save_file(){
         exit 1
     fi
 
-    while IFS=';' read -r path ip name library method username password; do
+    while ifs=',' read -r path ip name library method username password; do
         if [[ -z "$path" || "$path" == "#"* ]]; then
             continue
         fi
@@ -215,7 +215,7 @@ netmgr_restore_file(){
         exit 1
     fi
 
-    while IFS=';' read -r path ip name library method username password; do
+    while ifs=',' read -r path ip name library method username password; do
         if [[ -z "$path" || "$path" == "#"* ]]; then
             continue
         fi

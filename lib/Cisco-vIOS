@@ -52,7 +52,7 @@ lib_save_config(){
 	local path=$3
 	local username=$4
 	local password=$5
-    local enable_scp_commands="
+	local enable_scp_commands="
 conf t
 ip scp server enable
 exit
