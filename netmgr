@@ -267,10 +267,10 @@ func_exec(){
 Usage: netmgr exec [-i ip address] or [-f file path] [-x commands]
 
 Required:
-    -x <commands>          : Command to execute on nodes
+    -x <commands>       : Command to execute on nodes
     -i <ip address>     : The ip address of the added node
     or
-    -f <file path>      : The path for bulk adding nodes
+    -f <file path>      : The path for bulk nodes
 
 Example file format at ./data/wazuh_netmgr.data.example
 
@@ -356,7 +356,7 @@ Required:
     -i <ip address>     : The ip address of the added node
     -o <output file>    : Path for the saved config file
     or
-    -f <file path>      : The path for bulk adding nodes
+    -f <file path>      : The path for bulk nodes
 
 Example file format at ./data/wazuh_netmgr.data.example
 
@@ -438,7 +438,7 @@ Required:
     -i <ip address>     : The ip address of the added node
     -c <config file>    : Path for the saved config file
     or
-    -f <file path>      : The path for bulk adding nodes
+    -f <file path>      : The path for bulk nodes
     -c <config folder>  : Path for the root config folder
 
 Example file format at ./data/wazuh_netmgr.data.example
