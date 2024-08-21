@@ -81,17 +81,17 @@ exit
     [ $? -ne 0 ] && return $?
 
     case "$method" in
-        password)
-            sshpass -p "$password" scp -o StrictHostKeyChecking=no "$username@$ip:running-config" "$path"
-            retcode=$?
-            ;;
-        pubkey)
-            scp -i "$password" -o StrictHostKeyChecking=no "$username@$ip:running-config" "$path"
-            ;;
-        *)
-            echo "Error: Method $method is invalid or not available."
-            return 1
-            ;;
+    password)
+        sshpass -p "$password" scp -o StrictHostKeyChecking=no "$username@$ip:running-config" "$path"
+        retcode=$?
+        ;;
+    pubkey)
+        scp -i "$password" -o StrictHostKeyChecking=no "$username@$ip:running-config" "$path"
+        ;;
+    *)
+        echo "Error: Method $method is invalid or not available."
+        return 1
+        ;;
     esac
  
     lib_execute_ssh "$method" "$ip" "$username" "$password" "$disable_scp_commands"
@@ -129,18 +129,18 @@ wr
     [ $? -ne 0 ] && return $?
 
     case "$method" in
-        password)
-            sshpass -p "$password" scp -o StrictHostKeyChecking=no "$path" "$username@$ip:flash:backup-config"
-            [ $? -ne 0 ] && return $?
-            ;;
-        pubkey)
-            scp -i "$password" -o StrictHostKeyChecking=no "$path" "$username@$ip:flash:backup-config"
-            ;;
-        *)
-            echo "Error: Method $method is invalid or not available."
-            return 1
-            ;;
-        esac
+    password)
+        sshpass -p "$password" scp -o StrictHostKeyChecking=no "$path" "$username@$ip:flash:backup-config"
+        [ $? -ne 0 ] && return $?
+        ;;
+    pubkey)
+        scp -i "$password" -o StrictHostKeyChecking=no "$path" "$username@$ip:flash:backup-config"
+        ;;
+    *)
+        echo "Error: Method $method is invalid or not available."
+        return 1
+        ;;
+    esac
         
     lib_execute_ssh "$method" "$ip" "$username" "$password" "$load_config_commands" 
     [ $? -ne 0 ] && return $?	
